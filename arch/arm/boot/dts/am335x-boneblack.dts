@@ -8,9 +8,171 @@
 #include "am335x-bone-common.dtsi"
 #include "am335x-boneblack-common.dtsi"
 
+#include <dt-bindings/iio/adc/adi,ad5940.h>
+
+&am33xx_pinmux {
+	spi0_pins: spi0_pins {
+		pinctrl-single,pins = <
+			AM33XX_IOPAD(0x950, PIN_INPUT | MUX_MODE7) /* (A17) spi0_sclk.gpio0[2] */
+			AM33XX_IOPAD(0x954, PIN_INPUT | MUX_MODE7) /* (B17) spi0_d0.gpio0[3] */
+			AM33XX_IOPAD(0x958, PIN_INPUT | MUX_MODE7) /* (B16) spi0_d1.gpio0[4] */
+			AM33XX_IOPAD(0x95c, PIN_INPUT | MUX_MODE7) /* (A16) spi0_cs0.gpio0[5] */
+		>;
+	};
+
+	ad5940_pins: ad5940_pins {
+		pinctrl-single,pins = <
+			AM33XX_PADCONF(AM335X_PIN_GPMC_AD12, PIN_INPUT_PULLUP, MUX_MODE7)
+		>;
+	};
+};
+
 / {
 	model = "TI AM335x BeagleBone Black";
 	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
+
+	adc_vref: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed-supply";
+		regulator-min-microvolt = <1820000>;
+		regulator-max-microvolt = <1820000>;
+		regulator-boot-on;
+	};
+
+	spi3: spi3 {
+		compatible = "spi-gpio";
+		gpio-sck = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+		gpio-miso = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+		gpio-mosi = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+		cs-gpios = <&gpio1 16 GPIO_ACTIVE_HIGH &gpio0 5 GPIO_ACTIVE_HIGH>;
+		num-chipselects = <2>;
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&spi0_pins>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		spidev@0 {
+			compatible = "spidev";
+			spi-max-frequency = <10000000>;
+			reg = <0>;
+		};
+
+		ad5940@1 {
+			compatible = "adi,ad5940";
+			reg = <1>;
+			spi-max-frequency = <10000000>;
+			vref-supply = <&adc_vref>;
+			interrupt-parent = <&gpio0>;
+			interrupts = <27 IRQ_TYPE_EDGE_FALLING 22 IRQ_TYPE_EDGE_FALLING>;
+			interrupt-names = "INT1", "INT2";
+
+			adi,interrupt-io = <0 4>;
+			adi,interrupt-sources = <0 0>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			channel@0 {
+				reg = <0>;
+				diff-channels = <AD5940_ADC_INPUTP_VCE0
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "Vce-Vbias";
+			};
+
+			channel@1 {
+				reg = <1>;
+				diff-channels = <AD5940_ADC_INPUTP_VRE0
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "Vre-Vbias";
+			};
+
+			channel@2 {
+				reg = <2>;
+				diff-channels = <AD5940_ADC_INPUTP_SE0
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "Vse-Vbias";
+			};
+
+			channel@3 {
+				reg = <3>;
+				diff-channels = <AD5940_ADC_INPUTP_DE0
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "Vde-Vbias";
+			};
+
+			channel@4 {
+				reg = <4>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN0
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain0-Vbias";
+			};
+
+			channel@5 {
+				reg = <5>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN1
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain1-Vbias";
+			};
+
+			channel@6 {
+				reg = <6>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN2
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain2-Vbias";
+			};
+
+			channel@7 {
+				reg = <7>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN3
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain3-Vbias";
+			};
+
+			channel@8 {
+				reg = <8>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN4
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain4-Vbias";
+			};
+
+			channel@9 {
+				reg = <9>;
+				diff-channels = <AD5940_ADC_INPUTP_AIN6
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "ain6-Vbias";
+			};
+
+			channel@10 {
+				reg = <10>;
+				diff-channels = <AD5940_ADC_INPUTP_LPTIA_LP
+						AD5940_ADC_INPUTN_LPTIA>;
+				channel-name = "Low power TIA DC";
+			};
+
+			channel@11 {
+				reg = <11>;
+				diff-channels = <AD5940_ADC_INPUTP_LPTIA
+						AD5940_ADC_INPUTN_LPTIA>;
+				channel-name = "Low power TIA AC";
+			};
+
+			channel@12 {
+				reg = <12>;
+				diff-channels = <AD5940_ADC_INPUTP_HSTIA
+						AD5940_ADC_INPUTN_HSTIA>;
+				channel-name = "High Speed TIA";
+			};
+
+			channel@13 {
+				reg = <13>;
+				diff-channels = <AD5940_ADC_INPUTP_TEMP
+						AD5940_ADC_INPUTN_VBIAS0>;
+				channel-name = "Temperature";
+			};
+		};
+	};
 };
 
 &cpu0_opp_table {
