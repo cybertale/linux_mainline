@@ -5,7 +5,6 @@
  * Copyright (C) 2020 Song Qiang <songqiang1304521@gmail.com>
  */
 
-#include <linux/bitfield.h>
 #include <linux/bsearch.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
@@ -13,72 +12,9 @@
 #include <linux/of_irq.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
+#include <linux/mfd/ad5940.h>
 
 #include <linux/iio/iio.h>
-
-#define AD5940_CHANNEL_AINP_MSK		GENMASK(5, 0)
-#define AD5940_CHANNEL_AINP(x)		FIELD_PREP(AD5940_CHANNEL_AINP_MSK, x)
-#define AD5940_CHANNEL_AINN_MSK		GENMASK(12, 8)
-#define AD5940_CHANNEL_AINN(x)		FIELD_PREP(AD5940_CHANNEL_AINN_MSK, x)
-
-#define AD5940_CHANNEL_NAME		0
-
-#define AD5940_SPICMD_SETADDR		0x20      /* set the register address that is going to operate. */
-#define AD5940_SPICMD_READREG		0x6d      /* command to read register */
-#define AD5940_SPICMD_WRITEREG		0x2d      /* command to write register */
-#define AD5940_SPICMD_READFIFO		0x5f      /* command to read FIFO */
-
-#define AD5940_REG_AFECON		0x00002000	/* AFE Configuration Register. */
-#define AD5940_AFECON_ADCCONVEN_MSK	BIT(8)		/* ADC Conversion Enable. */
-#define AD5940_AFECON_ADCCONVEN		FIELD_PREP(AD5940_AFECON_ADCCONVEN_MSK, 1)
-#define AD5940_AFECON_ADCEN_MSK		BIT(7)		/* ADC Power Enable. */
-#define AD5940_AFECON_ADCEN		FIELD_PREP(AD5940_AFECON_ADCEN_MSK, 1)
-
-#define AD5940_REG_ADCDAT		0x00002074	/* ADC Raw Result. */
-#define AD5940_REG_DFTREAL		0x00002078	/* DFT Result, Real Part. */
-#define AD5940_REG_DFTIMAG		0x0000207C	/* DFT Result, Imaginary Part. */
-#define AD5940_REG_SINC2DAT		0x00002080	/* Supply Rejection Filter Result. */
-#define AD5940_REG_TEMPSENSDAT		0x00002084	/* Temperature Sensor Result. */
-#define AD5940_REG_STATSMEAN		0x000021C8	/* Statistics Mean Output. */
-#define AD5940_REG_STATSVAR		0x000021C0	/* Variance Output. */
-
-#define AD5940_REG_INTCPOL		0x00003000	/* Interrupt Polarity. */
-#define AD5940_INTCPOL_MSK		BIT(0)
-#define AD5940_INTCPOL_POS		FIELD_PREP(AD5940_INTCPOL_MSK, 1)
-#define AD5940_INTCPOL_NEG		FIELD_PREP(AD5940_INTCPOL_MSK, 0)
-#define AD5940_REG_INTCLR		0x00003004
-
-#define AD5940_REG_GP0CON		0x00000000
-#define AD5940_REG_GP0OEN		0x00000004
-
-#define AD5940_REG_PMBW			0x000022F0	/* Power and Bandwidth Management. */
-#define	AD5940_PMBW_SYSHS_MSK		BIT(0)
-#define	AD5940_PMBW_HP			FIELD_PREP(AD5940_PMBW_SYSHS_MSK, 1)
-#define	AD5940_PMBW_LP			FIELD_PREP(AD5940_PMBW_SYSHS_MSK, 0)
-#define AD5940_PMBW_SYSBW_MSK		GENMASK(3, 2)
-#define	AD5940_PMBW_BWNA		FIELD_PREP(AD5940_PMBW_SYSBW_MSK, 0)
-#define	AD5940_PMBW_BW50		FIELD_PREP(AD5940_PMBW_SYSBW_MSK, 1)
-#define	AD5940_PMBW_BW100		FIELD_PREP(AD5940_PMBW_SYSBW_MSK, 2)
-#define	AD5940_PMBW_BW250		FIELD_PREP(AD5940_PMBW_SYSBW_MSK, 3)
-
-#define AD5940_REG_ADCCON		0x000021A8
-#define AD5940_ADCCON_PGA_MSK		GENMASK(18, 16)
-#define AD5940_ADCCON_PGA_1		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 0)
-#define AD5940_ADCCON_PGA_1P5		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 1)
-#define AD5940_ADCCON_PGA_2		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 2)
-#define AD5940_ADCCON_PGA_4		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 3)
-#define AD5940_ADCCON_PGA_9		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 4)
-#define AD5940_ADCCON_MUX_MSK		(GENMASK(12, 8) | GENMASK(5, 0))
-
-#define AD5940_AFECON_CHIPID		0x00000404            /*  AFECON Chip Identification */
-#define AD5940_AFECON_CLKCON0		0x00000408            /*  AFECON Clock Divider Configuration */
-#define AD5940_AFECON_CLKEN1		0x00000410            /*  AFECON Clock Gate Enable */
-#define AD5940_AFECON_CLKSEL		0x00000414            /*  AFECON Clock Select */
-#define AD5940_AFECON_CLKCON0KEY	0x00000420            /*  AFECON Enable Clock Division to 8Mhz,4Mhz and 2Mhz */
-#define AD5940_AFECON_SWRSTCON		0x00000424            /*  AFECON Software Reset */
-#define AD5940_AFECON_TRIGSEQ		0x00000430            /*  AFECON Trigger Sequence */
-
-#define AD5940_CHIPID			0x5502
 
 struct ad5940_channel_config {
 	u32 ain;
@@ -87,6 +23,7 @@ struct ad5940_channel_config {
 
 struct ad5940_state {
 	struct spi_device *spi;
+	struct ad5940 *ad5940;
 	/*
 	 * This lock is for protecting the current sequence of SPI r/w commands
 	 * will not be interrupted by other r/w sequences.
@@ -107,93 +44,6 @@ struct ad5940_state {
 	int irq[2];
 	u32 src[2];
 };
-
-static int ad5940_set_addr(struct spi_device *spi, u16 addr)
-{
-	u8 tx_buf[3];
-
-	tx_buf[0] = AD5940_SPICMD_SETADDR;
-	tx_buf[1] = (addr >> 8) & 0xff;
-	tx_buf[2] = addr & 0xff;
-
-	return spi_write(spi, tx_buf, 3);
-}
-
-static int ad5940_read_reg(struct ad5940_state *st, u16 addr, u32 *data)
-{
-	u8 tx_buf[2];
-	u8 rx_buf[4];
-	int rx_len;
-	int ret;
-
-	tx_buf[0] = AD5940_SPICMD_READREG;
-	tx_buf[1] = 0;
-
-	ret = ad5940_set_addr(st->spi, addr);
-	if (ret < 0)
-		return ret;
-
-	if ((addr >= 0x1000) && (addr <= 0x3014))
-		rx_len = 4;
-	else
-		rx_len = 2;
-
-	ret = spi_write_then_read(st->spi, tx_buf, 2, rx_buf, rx_len);
-	if (ret < 0)
-		return ret;
-	
-	if (rx_len == 2)
-		*data = (rx_buf[0] << 8) | rx_buf[1];
-	else
-		*data = (rx_buf[0] << 24) | (rx_buf[1] << 16) |
-			(rx_buf[2] << 8) | rx_buf[3];
-
-	dev_info(&st->spi->dev, "read %x got %x", addr, *data);
-	return 0;
-}
-
-static int ad5940_write_reg(struct ad5940_state *st, u16 addr, u32 data)
-{
-	u8 tx_buf[5];
-	int tx_len;
-	int ret;
-
-	tx_buf[0] = AD5940_SPICMD_WRITEREG;
-	if ((addr >= 0x1000) && (addr <= 0x3014)) {
-		tx_buf[1] = (data >> 24) & 0xff;
-		tx_buf[2] = (data >> 16) & 0xff;
-		tx_buf[3] = (data >> 8) & 0xff;
-		tx_buf[4] = data & 0xff;
-		tx_len = 5;
-	} else {
-		tx_buf[1] = (data >> 8) & 0xff;
-		tx_buf[2] = data & 0xff;
-		tx_len = 3;
-	}
-
-	ret = ad5940_set_addr(st->spi, addr);
-	if (ret < 0)
-		return ret;
-
-	dev_info(&st->spi->dev, "write %x %x", addr, data);
-	return spi_write(st->spi, tx_buf, tx_len);
-}
-
-static int ad5940_write_reg_mask(struct ad5940_state *st, u16 addr,
-				 u32 mask, u32 data)
-{
-	u32 temp;
-	int ret;
-
-	ret = ad5940_read_reg(st, addr, &temp);
-	if (ret < 0)
-		return ret;
-
-	temp &= ~mask;
-	temp |= data;
-
-	return ad5940_write_reg(st, addr, temp);
-}
 
 static ssize_t ad5940_read_info(struct iio_dev *indio_dev,
 				uintptr_t private,
@@ -262,8 +112,8 @@ static irqreturn_t ad5940_threaded_func(int irq, void *private)
 	ad5940_process_irq(index, ret);
 
 	ad5940_clear_irq_flag(index);
-	ad5940_write_reg_mask(st, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
-	ad5940_write_reg_mask(st, AD5940_REG_INTCLR, 0x1, 0x1);
+	ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
+	ad5940_write_reg_mask(st->spi, AD5940_REG_INTCLR, 0x1, 0x1);
 
 	complete(&st->measuring_done);
 
@@ -281,13 +131,13 @@ static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
 	u32 tmp;
 
 	mutex_lock(&st->lock);
-	ret = ad5940_write_reg_mask(st, AD5940_REG_ADCCON, AD5940_ADCCON_MUX_MSK,
+	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_ADCCON, AD5940_ADCCON_MUX_MSK,
 				    mux);
 	if (ret < 0)
 		goto unlock_return;
 
 	reinit_completion(&st->measuring_done);
-	ret = ad5940_write_reg_mask(st, AD5940_REG_AFECON,
+	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON,
 				    AD5940_AFECON_ADCCONVEN_MSK,
 				    AD5940_AFECON_ADCCONVEN);
 	if (ret < 0)
@@ -303,7 +153,7 @@ static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
 		goto unlock_return;
 	}
 
-	ad5940_read_reg(st, AD5940_REG_ADCDAT, &tmp);
+	ad5940_read_reg(st->spi, AD5940_REG_ADCDAT, &tmp);
 	*val = tmp;
 	ret = 0;
 
@@ -455,7 +305,7 @@ static int ad5940_config_sources(struct ad5940_state *st, u8 index, u32 sources)
 		regaddr = 0x0000300C;
 
 	//sources may be a bit array.
-	ad5940_write_reg(st, regaddr, 1 << sources);	//TEST ONLY!!
+	ad5940_write_reg(st->spi, regaddr, 1 << sources);	//TEST ONLY!!
 
 	return 0;
 }
@@ -483,57 +333,21 @@ static int ad5940_config_polarity(struct ad5940_state *st, u32 polarity)
 	else
 		val = AD5940_INTCPOL_NEG;
 
-	return ad5940_write_reg_mask(st, AD5940_REG_INTCPOL,
+	return ad5940_write_reg_mask(st->spi, AD5940_REG_INTCPOL,
 				     AD5940_INTCPOL_MSK, val);
 }
 
-static const u32 ad5940_powerup_setting[][2] = {
-	{ 0x0908, 0x02c9 },
-	{ 0x0c08, 0x206c },
-	{ 0x21f0, 0x0010 },
-	{ 0x0410, 0x02c9 },
-	{ 0x0a28, 0x0009 },
-	{ 0x238c, 0x0104 },
-	{ 0x0a04, 0x4859 },
-	{ 0x0a04, 0xf27b },
-	{ 0x0a00, 0x8009 },
-	{ 0x22f0, 0x0000 },
-	{ 0x2230, 0xde87a5af },
-	{ 0x2250, 0x103f },
-	{ 0x22b0, 0x203c },
-	{ 0x2230, 0xde87a5a0 },
-};
-
 static int ad5940_setup(struct ad5940_state *st)
 {
-	u32 chip_id;
 	int ret;
-	u8 i;
 
-	for (i = 0; i < ARRAY_SIZE(ad5940_powerup_setting); i++)
-		ad5940_write_reg(st, ad5940_powerup_setting[i][0],
-				ad5940_powerup_setting[i][1]);
-
-	ret = ad5940_read_reg(st, AD5940_AFECON_CHIPID, &chip_id);
-	if (ret < 0)
-		return ret;
-	if (chip_id != AD5940_CHIPID) {
-		dev_err(&st->spi->dev, "Wrong chip ID with 0x%x.\n", chip_id);
-		return -ENXIO;
-	}
-
-	ret = ad5940_write_reg(st, AD5940_REG_PMBW,
-			       AD5940_PMBW_LP | AD5940_PMBW_BW250);
-	if (ret < 0)
-		return ret;
-
-	ret = ad5940_write_reg_mask(st, AD5940_REG_ADCCON,
+	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_ADCCON,
 				    AD5940_ADCCON_PGA_MSK,
 				    AD5940_ADCCON_PGA_1);
 	if (ret < 0)
 		return ret;
 
-	return ad5940_write_reg_mask(st, AD5940_REG_AFECON,
+	return ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON,
 				     AD5940_AFECON_ADCEN_MSK,
 			             AD5940_AFECON_ADCEN);
 }
@@ -598,89 +412,91 @@ static int ad5940_config_irq_channel(u8 channel, struct ad5940_state *st,
 	return 0;
 }
 
-static int ad5940_probe(struct spi_device *spi)
+static int ad5940_adc_probe(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev;
 	struct ad5940_state *st;
+	struct ad5940 *ad5940 = dev_get_drvdata(pdev->dev.parent);
 	u32 trig_type[2];
 	int vref_uv = 0;
 	u32 int_io[2];
 	int ret;
 
-	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
+	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*st));
 	if (!indio_dev)
 		return -ENOMEM;
 
 	st = iio_priv(indio_dev);
-	st->spi = spi;
+	st->ad5940 = ad5940;
+	st->spi = ad5940->spi;
 	init_completion(&st->measuring_done);
 
-	ret = device_property_read_u32_array(&spi->dev,
+	ret = device_property_read_u32_array(&pdev->dev,
 					     "adi,interrupt-sources",
 					     st->src, 2);
 	if (ret) {
-		dev_err(&spi->dev,
+		dev_err(&pdev->dev,
 			"reading dt property 'adi,interrupt-sources' failed.");
 		return -EINVAL;
 	}
 
-	ret = device_property_read_u32_array(&spi->dev, "adi,interrupt-io",
+	ret = device_property_read_u32_array(&pdev->dev, "adi,interrupt-io",
 					    int_io, 2);
 	if (ret) {
-		dev_err(&spi->dev,
+		dev_err(&pdev->dev,
 			"reading dt property 'adi,interrupt-io' failed.");
 		return -EINVAL;
 	}
 
-	st->irq[0] = of_irq_get_byname(spi->dev.of_node, "INT1");
+	st->irq[0] = of_irq_get_byname(pdev->dev.of_node, "INT1");
 	if (st->irq[0] <= 0) {
-		dev_err(&spi->dev, "INT1 not specified in dts");
+		dev_err(&pdev->dev, "INT1 not specified in dts");
 		return -EINVAL;
 	}
-	st->irq[1] = of_irq_get_byname(spi->dev.of_node, "INT2");
+	st->irq[1] = of_irq_get_byname(pdev->dev.of_node, "INT2");
 	if (st->irq[1] <= 0) {
-		dev_err(&spi->dev, "INT2 not specified in dts");
+		dev_err(&pdev->dev, "INT2 not specified in dts");
 		return -EINVAL;
 	}
 
 	trig_type[0] = irq_get_trigger_type(st->irq[0]);
 	trig_type[1] = irq_get_trigger_type(st->irq[1]);
 	if (trig_type[0] != trig_type[1]) {
-		dev_err(&spi->dev,
+		dev_err(&pdev->dev,
 			"trigger types on two channels must be the same.");
 		return -EINVAL;
 	}
 	if (trig_type[0] != IRQF_TRIGGER_RISING &&
 	    trig_type[0] != IRQF_TRIGGER_FALLING) {
-		dev_err(&spi->dev, "trigger type must be rising or falling.");
+		dev_err(&pdev->dev, "trigger type must be rising or falling.");
 		return -EINVAL;
 	}
 
 	ret = ad5940_config_polarity(st, trig_type[0]);
 	if (ret < 0) {
-		dev_err(&spi->dev, "config polarity failed.");
+		dev_err(&pdev->dev, "config polarity failed.");
 		return ret;
 	}
 
-	ret = ad5940_config_irq_channel(0, st, &spi->dev, spi->dev.of_node,
+	ret = ad5940_config_irq_channel(0, st, &pdev->dev, pdev->dev.of_node,
 					int_io, trig_type[0]);
 	if (ret < 0)
 		return ret;
 
-	ret = ad5940_config_irq_channel(1, st, &spi->dev, spi->dev.of_node,
+	ret = ad5940_config_irq_channel(1, st, &pdev->dev, pdev->dev.of_node,
 					int_io, trig_type[0]);
 	if (ret < 0)
 		return ret;
 
-	st->vref = devm_regulator_get_optional(&spi->dev, "vref");
+	st->vref = devm_regulator_get_optional(&pdev->dev, "vref");
 	if (!IS_ERR(st->vref)) {
 		ret = regulator_enable(st->vref);
 		if (ret) {
-			dev_err(&spi->dev, "Failed to enbale specified vref supply.\n");
+			dev_err(&pdev->dev, "Failed to enbale specified vref supply.\n");
 			return ret;
 		}
 
-		ret = devm_add_action_or_reset(&spi->dev,
+		ret = devm_add_action_or_reset(&pdev->dev,
 				ad5940_regulator_disable, st);
 		if (ret) {
 			regulator_disable(st->vref);
@@ -699,13 +515,13 @@ static int ad5940_probe(struct spi_device *spi)
 	else
 		st->vref_mv = 1820;
 
-	indio_dev->dev.parent = &spi->dev;
-	indio_dev->dev.of_node = spi->dev.of_node;
-	indio_dev->name = spi->dev.of_node->name;
+	indio_dev->dev.parent = &st->spi->dev;
+	indio_dev->dev.of_node = pdev->dev.of_node;
+	indio_dev->name = pdev->dev.of_node->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &ad5940_info;
 
-	ret = ad5940_of_parse_channel_config(indio_dev, spi->dev.of_node);
+	ret = ad5940_of_parse_channel_config(indio_dev, pdev->dev.of_node);
 	if (ret < 0)
 		return ret;
 
@@ -713,23 +529,23 @@ static int ad5940_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	return devm_iio_device_register(&spi->dev, indio_dev);
+	return devm_iio_device_register(&pdev->dev, indio_dev);
 }
 
-static const struct of_device_id ad5940_dt_match[] = {
-	{ .compatible = "adi,ad5940" },
+static const struct of_device_id ad5940_adc_dt_match[] = {
+	{ .compatible = "adi,ad5940-adc" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, ad5940_spi_ids);
+MODULE_DEVICE_TABLE(of, ad5940_adc_ids);
 
-static struct spi_driver ad5940_driver = {
+static struct platform_driver ad5940_adc_driver = {
 	.driver = {
-		.name = "ad5940",
-		.of_match_table = ad5940_dt_match,
+		.name = "ad5940-adc",
+		.of_match_table = ad5940_adc_dt_match,
 	},
-	.probe = ad5940_probe,
+	.probe = ad5940_adc_probe,
 };
-module_spi_driver(ad5940_driver);
+module_platform_driver(ad5940_adc_driver);
 
 MODULE_AUTHOR("Song Qiang <songqiang1304521@gmail.com>");
 MODULE_DESCRIPTION("Analog Device AD5940 ADC driver");

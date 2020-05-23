@@ -23,7 +23,7 @@ config AD_SIGMA_DELTA
 
 config AD5940
 	tristate "Analog Devices AD5940 ADC Driver"
-	depends on SPI
+	depends on SPI && AFE_AD5940
 	help
 	  Say yes here to build support for the ADC part of Analog Devices
 	  analog front end AD5940.
