@@ -41,6 +41,9 @@ struct ad5940 {
 #define AD5940_REG_STATSMEAN		0x000021C8	/* Statistics Mean Output. */
 #define AD5940_REG_STATSVAR		0x000021C0	/* Variance Output. */
 
+#define AD5940_REG_INTCSEL0		0x00003008
+#define AD5940_REG_INTCSEL1		0x0000300C
+#define AD5940_REG_INTCFLAG0		0x00003010
 #define AD5940_REG_INTCPOL		0x00003000	/* Interrupt Polarity. */
 #define AD5940_INTCPOL_MSK		BIT(0)
 #define AD5940_INTCPOL_POS		FIELD_PREP(AD5940_INTCPOL_MSK, 1)
@@ -78,6 +81,8 @@ struct ad5940 {
 #define AD5940_AFECON_TRIGSEQ		0x00000430            /*  AFECON Trigger Sequence */
 
 #define AD5940_CHIPID			0x5502
+
+#define AD5940_GPIO_PULLUP		0x00000001
 
 static int ad5940_set_addr(struct spi_device *spi, u16 addr)
 {

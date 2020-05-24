@@ -27,10 +27,14 @@ static const struct mfd_cell ad5940_devs[] = {
                 .name = "ad5940-adc",
                 .of_compatible = "adi,ad5940-adc",
         },
-        // {
-                // ,name = "ad5940-gpio",
-                // of_compatible = "adi,ad5940-gpio",
-        // },
+        {
+                .name = "ad5940-pinctrl",
+                .of_compatible = "adi,ad5940-pinctrl",
+        },
+        {
+                .name = "ad5940-intc",
+                .of_compatible = "adi,ad5940-intc",
+        },
 };
 
 static const u32 ad5940_powerup_setting[][2] = {

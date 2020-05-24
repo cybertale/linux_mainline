@@ -64,17 +64,170 @@
 			reg = <1>;
 			spi-max-frequency = <10000000>;
 
+			ad5940-pinctrl {
+				compatible = "adi,ad5940-pinctrl";
+
+				ad5940-gpio {
+					gpio-controller;
+					#gpio-cells = <2>;	//for client to pass parameters.
+					//interrupt-controller;
+					//#interrupt-cells = <2>;
+				};
+
+				pinctrl_gp0int0: gp0int0 {
+					functions = "int0out";
+					groups = "gpio0";
+				};
+				pinctrl_gp0seq0: gp0seq0 {
+					functions = "seq0trig";
+					groups = "gpio0";
+				};
+				pinctrl_gp0sync0: gp0sync0 {
+					functions = "sync0out";
+					groups = "gpio0";
+				};
+				pinctrl_gp0gpio0: gp0gpio0 {
+					functions = "gpio0";
+					groups = "gpio0";
+				};
+				pinctrl_gp1gpio1: gp1gpio1 {
+					functions = "gpio1";
+					groups = "gpio1";
+				};
+				pinctrl_gp1seq1: gp1seq1 {
+					functions = "seq1trig";
+					groups = "gpio1";
+				};
+				pinctrl_gp1sync1: gp1int0 {
+					functions = "int0out";
+					groups = "gpio1";
+				};
+				pinctrl_gp1deepsleep: gp1deepsleep {
+					functions = "deepsleep";
+					groups = "gpio1";
+				};
+				pinctrl_gp2por: gp2por {
+					functions = "por";
+					groups = "gpio2";
+				};
+				pinctrl_gp2seq2: gp2seq2 {
+					functions = "seq2trig";
+					groups = "gpio2";
+				};
+				pinctrl_gp2sync2: gp2sync2 {
+					functions = "sync2out";
+					groups = "gpio2";
+				};
+				pinctrl_gp2extclk: gp2extclk {
+					functions = "extclk";
+					groups = "gpio2";
+				};
+				pinctrl_gp3gpio3: gp3gpio3 {
+					functions = "gpio3";
+					groups = "gpio3";
+				};
+				pinctrl_gp3seq3: gp3seq3 {
+					functions = "seq3trig";
+					groups = "gpio3";
+				};
+				pinctrl_gp3sync3: gp3sync3 {
+					functions = "sync3out";
+					groups = "gpio3";
+				};
+				pinctrl_gp3int0: gp3int0 {
+					functions = "int0out";
+					groups = "gpio3";
+				};
+				pinctrl_gp4gpio4: gp4gpio4 {
+					functions = "gpio4";
+					groups = "gpio4";
+				};
+				pinctrl_gp4seq0: gp4seq0 {
+					functions = "seq0trig";
+					groups = "gpio4";
+				};
+				pinctrl_gp4sync4: gp4sync4 {
+					functions = "sync4out";
+					groups = "gpio4";
+				};
+				pinctrl_gp4int1: gp4int1 {
+					functions = "int1out";
+					groups = "gpio4";
+				};
+				pinctrl_gp5gpio5: gp5gpio5 {
+					functions = "gpio5";
+					groups = "gpio5";
+				};
+				pinctrl_gp5seq1: gp5seq1 {
+					functions = "seq1trig";
+					groups = "gpio5";
+				};
+				pinctrl_gp5sync5: gp5sync5 {
+					functions = "sync5out";
+					groups = "gpio5";
+				};
+				pinctrl_gp5extclk: gp5extclk {
+					functions = "extclk";
+					groups = "gpio5";
+				};
+				pinctrl_gp6gpio6: gp6gpio6 {
+					functions = "gpio6";
+					groups = "gpio6";
+				};
+				pinctrl_gp6seq2: gp6seq2 {
+					functions = "seq2trig";
+					groups = "gpio6";
+				};
+				pinctrl_gp6sync6: gp6sync6 {
+					functions = "sync6out";
+					groups = "gpio6";
+				};
+				pinctrl_gp6int0: gp6int0 {
+					functions = "int0out";
+					groups = "gpio6";
+				};
+				pinctrl_gp7gpio7: gp7gpio7 {
+					functions = "gpio7";
+					groups = "gpio7";
+				};
+				pinctrl_gp7seq3: gp7seq3 {
+					functions = "seq3trig";
+					groups = "gpio7";
+				};
+				pinctrl_gp7sync7: gp7sync7 {
+					functions = "sync0out";
+					groups = "gpio7";
+				};
+				pinctrl_gp7: gp7int1 {
+					functions = "int1out";
+					groups = "gpio7";
+				};
+			};
+
+			ad5940_intc: interrupt-controller {
+				compatible = "adi,ad5940-intc";
+
+				interrupt-parent = <&gpio0>;
+				interrupts = <27 IRQ_TYPE_EDGE_FALLING>;
+
+				interrupt-controller;
+				#interrupt-cells = <1>;
+
+				// adi,interrupt-polarity;
+			};
+
 			ad5940-adc {
 				compatible = "adi,ad5940-adc";
-				status = "okay";
 
 				vref-supply = <&adc_vref>;
-				interrupt-parent = <&gpio0>;
-				interrupts = <27 IRQ_TYPE_EDGE_FALLING 22 IRQ_TYPE_EDGE_FALLING>;
-				interrupt-names = "INT1", "INT2";
+				interrupt-parent = <&ad5940_intc>;
+				interrupts = <0>;
+				// interrupt-parent = <&gpio0>;
+				// interrupts = <27 IRQ_TYPE_EDGE_FALLING 22 IRQ_TYPE_EDGE_FALLING>;
+				// interrupt-names = "INT1", "INT2";
 
-				adi,interrupt-io = <0 4>;
-				adi,interrupt-sources = <0 0>;
+				// adi,interrupt-io = <0 4>;
+				// adi,interrupt-sources = <0 0>;
 
 				#address-cells = <1>;
 				#size-cells = <0>;

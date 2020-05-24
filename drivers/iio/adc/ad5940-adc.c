@@ -112,8 +112,6 @@ static irqreturn_t ad5940_threaded_func(int irq, void *private)
 	ad5940_process_irq(index, ret);
 
 	ad5940_clear_irq_flag(index);
-	ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
-	ad5940_write_reg_mask(st->spi, AD5940_REG_INTCLR, 0x1, 0x1);
 
 	complete(&st->measuring_done);
 
@@ -150,12 +148,16 @@ static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
 					  msecs_to_jiffies(100));
 	if (!ret) {
 		ret = -ETIMEDOUT;
-		goto unlock_return;
+		goto timeout;
 	}
 
 	ad5940_read_reg(st->spi, AD5940_REG_ADCDAT, &tmp);
 	*val = tmp;
 	ret = 0;
+
+timeout:
+	ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
+	ad5940_write_reg_mask(st->spi, AD5940_REG_INTCLR, 0x1, 0x1);
 
 unlock_return:
 	mutex_unlock(&st->lock);
@@ -174,7 +176,6 @@ static int ad5940_read_raw(struct iio_dev *indio_dev,
 		ret = ad5940_read(st, chan->channel | chan->channel2, val);
 		if (ret != 0)
 			return ret;
-		// *val = 1000;
 
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
@@ -295,34 +296,20 @@ err:
 	return ret;
 }
 
-static int ad5940_config_sources(struct ad5940_state *st, u8 index, u32 sources)
-{
-	u32 regaddr;
+// static int ad5940_config_sources(struct ad5940_state *st, u8 index, u32 sources)
+// {
+// 	u32 regaddr;
 
-	if (index == 0)
-		regaddr = 0x00003008;
-	else
-		regaddr = 0x0000300C;
+// 	if (index == 0)
+// 		regaddr = 0x00003008;
+// 	else
+// 		regaddr = 0x0000300C;
 
-	//sources may be a bit array.
-	ad5940_write_reg(st->spi, regaddr, 1 << sources);	//TEST ONLY!!
+// 	//sources may be a bit array.
+// 	ad5940_write_reg(st->spi, regaddr, 1 << sources);	//TEST ONLY!!
 
-	return 0;
-}
-
-static inline int ad5940_check_int_io(u32 io, const u8 *io_tbl, int len,
-				      struct device *dev)
-{
-	u8 *index;
-
-	index = bsearch(&io, io_tbl, len, sizeof(u8), cmp_u8);
-	if (!index) {
-		dev_err(dev, "interrupt output pin not valid,");
-		return -EINVAL;
-	}
-
-	return 0;
-}
+// 	return 0;
+// }
 
 static int ad5940_config_polarity(struct ad5940_state *st, u32 polarity)
 {
@@ -359,67 +346,13 @@ static void ad5940_regulator_disable(void *data)
 	regulator_disable(st->vref);
 }
 
-static int ad5940_config_irq_channel(u8 channel, struct ad5940_state *st,
-				     struct device *dev,
-				     struct device_node *node, u32 *io,
-				     u8 int_flag)
-{
-	static const u8 int_io_0[3] = {0, 3, 6};
-	static const u8 int_io_1[2] = {4, 7};
-
-	char *name;
-	const u8 *io_tbl;
-	int io_tbl_len;
-	int ret;
-
-	if (channel == 0) {
-		name = "INT1";
-		io_tbl = int_io_0;
-		io_tbl_len = ARRAY_SIZE(int_io_0);
-	}
-	else {
-		name = "INT2";
-		io_tbl = int_io_1;
-		io_tbl_len = ARRAY_SIZE(int_io_1);
-	}
-
-	ret = ad5940_config_sources(st, channel, st->src[channel]);
-	if (ret < 0) {
-		dev_err(dev, "configure sources of %s failed.", name);
-		return ret;
-	}
-
-	ret = ad5940_check_int_io(io[channel], io_tbl, io_tbl_len, dev);
-	if (ret < 0)
-		return ret;
-
-	//test
-	// ret = ad5940_write_reg_mask(st, AD5940_REG_GP0OEN, 1 << io[channel], 1 << io[channel]);
-	// if (ret < 0)
-		// return ret;
-	//test
-
-	ret = devm_request_threaded_irq(dev, st->irq[channel],
-					ad5940_irq_handler,
-					ad5940_threaded_func,
-					int_flag, dev_name(dev),
-					st);
-	if (ret < 0) {
-		dev_err(dev, "request irq %s failed.", name);
-		return ret;
-	}
-
-	return 0;
-}
-
 static int ad5940_adc_probe(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev;
 	struct ad5940_state *st;
 	struct ad5940 *ad5940 = dev_get_drvdata(pdev->dev.parent);
-	u32 trig_type[2];
 	int vref_uv = 0;
-	u32 int_io[2];
+	unsigned irq;
 	int ret;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*st));
@@ -431,62 +364,21 @@ static int ad5940_adc_probe(struct platform_device *pdev)
 	st->spi = ad5940->spi;
 	init_completion(&st->measuring_done);
 
-	ret = device_property_read_u32_array(&pdev->dev,
-					     "adi,interrupt-sources",
-					     st->src, 2);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"reading dt property 'adi,interrupt-sources' failed.");
-		return -EINVAL;
+	irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+	if (!irq) {
+		dev_err(&pdev->dev, "read irq from dt failed.");
+		return irq;
 	}
 
-	ret = device_property_read_u32_array(&pdev->dev, "adi,interrupt-io",
-					    int_io, 2);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"reading dt property 'adi,interrupt-io' failed.");
-		return -EINVAL;
-	}
-
-	st->irq[0] = of_irq_get_byname(pdev->dev.of_node, "INT1");
-	if (st->irq[0] <= 0) {
-		dev_err(&pdev->dev, "INT1 not specified in dts");
-		return -EINVAL;
-	}
-	st->irq[1] = of_irq_get_byname(pdev->dev.of_node, "INT2");
-	if (st->irq[1] <= 0) {
-		dev_err(&pdev->dev, "INT2 not specified in dts");
-		return -EINVAL;
-	}
-
-	trig_type[0] = irq_get_trigger_type(st->irq[0]);
-	trig_type[1] = irq_get_trigger_type(st->irq[1]);
-	if (trig_type[0] != trig_type[1]) {
-		dev_err(&pdev->dev,
-			"trigger types on two channels must be the same.");
-		return -EINVAL;
-	}
-	if (trig_type[0] != IRQF_TRIGGER_RISING &&
-	    trig_type[0] != IRQF_TRIGGER_FALLING) {
-		dev_err(&pdev->dev, "trigger type must be rising or falling.");
-		return -EINVAL;
-	}
-
-	ret = ad5940_config_polarity(st, trig_type[0]);
+	ret = devm_request_threaded_irq(&pdev->dev, irq,
+					ad5940_irq_handler,
+					ad5940_threaded_func,
+					0, dev_name(&pdev->dev),
+					st);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "config polarity failed.");
+		dev_err(&pdev->dev, "irq request failed.");
 		return ret;
 	}
-
-	ret = ad5940_config_irq_channel(0, st, &pdev->dev, pdev->dev.of_node,
-					int_io, trig_type[0]);
-	if (ret < 0)
-		return ret;
-
-	ret = ad5940_config_irq_channel(1, st, &pdev->dev, pdev->dev.of_node,
-					int_io, trig_type[0]);
-	if (ret < 0)
-		return ret;
 
 	st->vref = devm_regulator_get_optional(&pdev->dev, "vref");
 	if (!IS_ERR(st->vref)) {
@@ -532,16 +424,9 @@ static int ad5940_adc_probe(struct platform_device *pdev)
 	return devm_iio_device_register(&pdev->dev, indio_dev);
 }
 
-static const struct of_device_id ad5940_adc_dt_match[] = {
-	{ .compatible = "adi,ad5940-adc" },
-	{},
-};
-MODULE_DEVICE_TABLE(of, ad5940_adc_ids);
-
 static struct platform_driver ad5940_adc_driver = {
 	.driver = {
 		.name = "ad5940-adc",
-		.of_match_table = ad5940_adc_dt_match,
 	},
 	.probe = ad5940_adc_probe,
 };

@@ -5,6 +5,14 @@ config IRQCHIP
 	def_bool y
 	depends on OF_IRQ
 
+config AD5940_PIC
+	bool "AD5940 Analog Front End Interrupt Controller"
+	depends on AFE_AD5940
+	select GENERIC_IRQ_CHIP
+	select IRQ_DOMAIN
+	help
+	  AD5940 interrupt controller.
+
 config ARM_GIC
 	bool
 	select IRQ_DOMAIN_HIERARCHY
@@ -531,5 +539,4 @@ config LOONGSON_HTPIC
 	select I8259
 	help
 	  Support for the Loongson-3 HyperTransport PIC Controller.
-
 endmenu
