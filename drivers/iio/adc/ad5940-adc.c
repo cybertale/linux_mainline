@@ -3,6 +3,8 @@
  * AD5940 SPI ADC driver
  *
  * Copyright (C) 2020 Song Qiang <songqiang1304521@gmail.com>
+ * 
+ * TODO: to trigger only once, will need to diable adc conversion before clear irq, IRQ will trigger twice.
  */
 
 #include <linux/bsearch.h>
@@ -15,6 +17,24 @@
 #include <linux/mfd/ad5940.h>
 
 #include <linux/iio/iio.h>
+
+#define AD5940_REG_ADCCON		0x000021A8
+#define AD5940_ADCCON_PGA_MSK		GENMASK(18, 16)
+#define AD5940_ADCCON_PGA_1		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 0)
+#define AD5940_ADCCON_PGA_1P5		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 1)
+#define AD5940_ADCCON_PGA_2		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 2)
+#define AD5940_ADCCON_PGA_4		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 3)
+#define AD5940_ADCCON_PGA_9		FIELD_PREP(AD5940_ADCCON_PGA_MSK, 4)
+#define AD5940_ADCCON_MUX_MSK		(GENMASK(12, 8) | GENMASK(5, 0))
+
+#define AD5940_REG_REPEATADCCNV		0x000021F0
+
+#define AD5940_CHANNEL_AINP_MSK		GENMASK(5, 0)
+#define AD5940_CHANNEL_AINP(x)		FIELD_PREP(AD5940_CHANNEL_AINP_MSK, x)
+#define AD5940_CHANNEL_AINN_MSK		GENMASK(12, 8)
+#define AD5940_CHANNEL_AINN(x)		FIELD_PREP(AD5940_CHANNEL_AINN_MSK, x)
+
+#define AD5940_CHANNEL_NAME		0
 
 struct ad5940_channel_config {
 	u32 ain;
@@ -41,8 +61,7 @@ struct ad5940_state {
 	int num_channels;
 	struct ad5940_channel_config *channel_config;
 
-	int irq[2];
-	u32 src[2];
+	int irq;
 };
 
 static ssize_t ad5940_read_info(struct iio_dev *indio_dev,
@@ -80,47 +99,22 @@ static const struct iio_chan_spec ad5940_channel_template = {
 	.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
 };
 
-static int ad5940_read_irq_flag(u8 index)
-{
-	return 0;
-}
-
-static int ad5940_clear_irq_flag(u8 index)
-{
-	return 0;
-}
-
-static void ad5940_process_irq(u8 index, int flags)
-{
-}
-
-static irqreturn_t ad5940_threaded_func(int irq, void *private)
-{
-	struct ad5940_state *st = private;
-	u8 index;
-	int ret;
-
-	if (irq == st->irq[0])
-		index = 0;
-	else
-		index = 1;
-
-	ret = ad5940_read_irq_flag(index);
-	if (ret < 0)
-		return IRQ_HANDLED;
-
-	ad5940_process_irq(index, ret);
-
-	ad5940_clear_irq_flag(index);
-
-	complete(&st->measuring_done);
-
-	return IRQ_HANDLED;
-}
-
+/*
+ * IRQ can sleep in interrupt controller of AD5940 and
+ * stopping of conversion can not be threaded, or it will
+ * keep generating interrupts.
+ */
 static irqreturn_t ad5940_irq_handler(int irq, void *private)
 {
-	return IRQ_WAKE_THREAD;
+	struct ad5940_state *st = private;
+	int ret;
+
+	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
+	if (ret < 0)
+		dev_err(&st->spi->dev, "adc conversion stop failed.");
+
+	complete(&st->measuring_done);
+	return IRQ_HANDLED;
 }
 
 static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
@@ -129,12 +123,17 @@ static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
 	u32 tmp;
 
 	mutex_lock(&st->lock);
+	ret = ad5940_write_reg(st->spi, AD5940_REG_REPEATADCCNV, 0x10);
+	if (ret < 0)
+		goto unlock_return;
+
 	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_ADCCON, AD5940_ADCCON_MUX_MSK,
 				    mux);
 	if (ret < 0)
 		goto unlock_return;
 
 	reinit_completion(&st->measuring_done);
+	// enable_irq(st->irq);
 	ret = ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON,
 				    AD5940_AFECON_ADCCONVEN_MSK,
 				    AD5940_AFECON_ADCCONVEN);
@@ -148,16 +147,13 @@ static int ad5940_read(struct ad5940_state *st, u32 mux, int *val)
 					  msecs_to_jiffies(100));
 	if (!ret) {
 		ret = -ETIMEDOUT;
-		goto timeout;
+		ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
+		goto unlock_return;
 	}
 
 	ad5940_read_reg(st->spi, AD5940_REG_ADCDAT, &tmp);
 	*val = tmp;
 	ret = 0;
-
-timeout:
-	ad5940_write_reg_mask(st->spi, AD5940_REG_AFECON, AD5940_AFECON_ADCCONVEN, 0);
-	ad5940_write_reg_mask(st->spi, AD5940_REG_INTCLR, 0x1, 0x1);
 
 unlock_return:
 	mutex_unlock(&st->lock);
@@ -311,18 +307,18 @@ err:
 // 	return 0;
 // }
 
-static int ad5940_config_polarity(struct ad5940_state *st, u32 polarity)
-{
-	u32 val;
+// static int ad5940_config_polarity(struct ad5940_state *st, u32 polarity)
+// {
+// 	u32 val;
 
-	if (polarity == IRQF_TRIGGER_RISING)
-		val = AD5940_INTCPOL_POS;
-	else
-		val = AD5940_INTCPOL_NEG;
+// 	if (polarity == IRQF_TRIGGER_RISING)
+// 		val = AD5940_INTCPOL_POS;
+// 	else
+// 		val = AD5940_INTCPOL_NEG;
 
-	return ad5940_write_reg_mask(st->spi, AD5940_REG_INTCPOL,
-				     AD5940_INTCPOL_MSK, val);
-}
+// 	return ad5940_write_reg_mask(st->spi, AD5940_REG_INTCPOL,
+// 				     AD5940_INTCPOL_MSK, val);
+// }
 
 static int ad5940_setup(struct ad5940_state *st)
 {
@@ -352,7 +348,6 @@ static int ad5940_adc_probe(struct platform_device *pdev)
 	struct ad5940_state *st;
 	struct ad5940 *ad5940 = dev_get_drvdata(pdev->dev.parent);
 	int vref_uv = 0;
-	unsigned irq;
 	int ret;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*st));
@@ -364,15 +359,14 @@ static int ad5940_adc_probe(struct platform_device *pdev)
 	st->spi = ad5940->spi;
 	init_completion(&st->measuring_done);
 
-	irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
-	if (!irq) {
+	st->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+	if (!st->irq) {
 		dev_err(&pdev->dev, "read irq from dt failed.");
-		return irq;
+		return st->irq;
 	}
 
-	ret = devm_request_threaded_irq(&pdev->dev, irq,
+	ret = devm_request_irq(&pdev->dev, st->irq,
 					ad5940_irq_handler,
-					ad5940_threaded_func,
 					0, dev_name(&pdev->dev),
 					st);
 	if (ret < 0) {
