@@ -31,14 +31,6 @@
 	model = "TI AM335x BeagleBone Black";
 	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
 
-	adc_vref: fixedregulator@0 {
-		compatible = "regulator-fixed";
-		regulator-name = "fixed-supply";
-		regulator-min-microvolt = <1820000>;
-		regulator-max-microvolt = <1820000>;
-		regulator-boot-on;
-	};
-
 	spi3: spi3 {
 		compatible = "spi-gpio";
 		gpio-sck = <&gpio0 2 GPIO_ACTIVE_HIGH>;
@@ -64,14 +56,69 @@
 			reg = <1>;
 			spi-max-frequency = <10000000>;
 
+			regulators {
+				ad5940_hsadc_vref: hsadc_ref {
+					regulator-name = "1.82v hsadc ref";
+					regulator-min-microvolt = <1820000>;
+					regulator-max-microvolt = <1820000>;
+				};
+				hsadc_limit {
+					regulator-name = "1.1v hsadc current limit";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+				lpadc_ref {
+					regulator-name = "1.82v lpadc ref";
+					regulator-min-microvolt = <1820000>;
+					regulator-max-microvolt = <1820000>;
+				};
+				hsadc_discharge {
+					regulator-name = "1.82v hsadc discharge";
+					regulator-min-microvolt = <1820000>;
+					regulator-max-microvolt = <1820000>;
+				};
+				hsadc_com {
+					regulator-name = "1.1v hsadc common";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+				lpadc_com {
+					regulator-name = "1.1v lpadc common";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+				lpadc_discharge {
+					regulator-name = "1.1v lpadc discharge";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+				ref_out {
+					regulator-name = "1.82v ref output";
+					regulator-min-microvolt = <1820000>;
+					regulator-max-microvolt = <1820000>;
+				};
+			};
+
+			ad5940_dac_vref: dac_ref {
+				compatible = "regulator-fixed";
+				regulator-name = "fixed-supply";
+				regulator-min-microvolt = <1820000>;
+				regulator-max-microvolt = <1820000>;
+				regulator-boot-on;
+			};
+
+			ad5940-dac {
+				compatible = "adi,ad5940-dac";
+
+				vref-supply = <&ad5940_dac_vref>;
+			};
+
 			ad5940-pinctrl {
 				compatible = "adi,ad5940-pinctrl";
 
 				ad5940-gpio {
 					gpio-controller;
 					#gpio-cells = <2>;	//for client to pass parameters.
-					//interrupt-controller;
-					//#interrupt-cells = <2>;
 				};
 
 				pinctrl_gp0int0: gp0int0 {
@@ -219,15 +266,9 @@
 			ad5940-adc {
 				compatible = "adi,ad5940-adc";
 
-				vref-supply = <&adc_vref>;
+				vref-supply = <&ad5940_hsadc_vref>;
 				interrupt-parent = <&ad5940_intc>;
 				interrupts = <0>;
-				// interrupt-parent = <&gpio0>;
-				// interrupts = <27 IRQ_TYPE_EDGE_FALLING 22 IRQ_TYPE_EDGE_FALLING>;
-				// interrupt-names = "INT1", "INT2";
-
-				// adi,interrupt-io = <0 4>;
-				// adi,interrupt-sources = <0 0>;
 
 				#address-cells = <1>;
 				#size-cells = <0>;

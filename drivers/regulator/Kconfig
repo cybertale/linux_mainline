@@ -105,6 +105,12 @@ config REGULATOR_AD5398
 	  This driver supports AD5398 and AD5821 current regulator chips.
 	  If building into module, its name is ad5398.ko.
 
+config REGULATOR_AD5940
+	bool "Analog Devices AD5940 regulators"
+	depends on AFE_AD5940
+	help
+	  This driver supports the internal voltage reference of AD5940.
+
 config REGULATOR_ANATOP
 	tristate "Freescale i.MX on-chip ANATOP LDO regulators"
 	depends on ARCH_MXC || COMPILE_TEST

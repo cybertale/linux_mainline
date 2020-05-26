@@ -1,5 +1,7 @@
 
-#include <linux/module.h>
+
+//TODO: Therre are two intc, now hac
+
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/of_irq.h>

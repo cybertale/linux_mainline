@@ -292,21 +292,6 @@ err:
 	return ret;
 }
 
-// static int ad5940_config_sources(struct ad5940_state *st, u8 index, u32 sources)
-// {
-// 	u32 regaddr;
-
-// 	if (index == 0)
-// 		regaddr = 0x00003008;
-// 	else
-// 		regaddr = 0x0000300C;
-
-// 	//sources may be a bit array.
-// 	ad5940_write_reg(st->spi, regaddr, 1 << sources);	//TEST ONLY!!
-
-// 	return 0;
-// }
-
 // static int ad5940_config_polarity(struct ad5940_state *st, u32 polarity)
 // {
 // 	u32 val;

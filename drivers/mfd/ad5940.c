@@ -24,8 +24,8 @@
 
 static const struct mfd_cell ad5940_devs[] = {
         {
-                .name = "ad5940-adc",
-                .of_compatible = "adi,ad5940-adc",
+                .name = "ad5940-regulator",
+                .of_compatible = "adi,ad5940-regulatora",
         },
         {
                 .name = "ad5940-pinctrl",
@@ -34,6 +34,14 @@ static const struct mfd_cell ad5940_devs[] = {
         {
                 .name = "ad5940-intc",
                 .of_compatible = "adi,ad5940-intc",
+        },
+        {
+                .name = "ad5940-adc",
+                .of_compatible = "adi,ad5940-adc",
+        },
+        {
+                .name = "ad5940-dac",
+                .of_compatible = "adi,ad5940-dac",
         },
 };
 

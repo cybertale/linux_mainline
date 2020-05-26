@@ -1,16 +1,8 @@
 
+#include <linux/module.h>
 #include <linux/bitfield.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
-
-struct ad5940_adc_platform_data {
-
-};
-
-struct ad5940_gpio_platform_data {
-
-};
-
 struct ad5940 {
         struct spi_device *spi;
 };
@@ -25,6 +17,10 @@ struct ad5940 {
 #define AD5940_AFECON_ADCCONVEN		FIELD_PREP(AD5940_AFECON_ADCCONVEN_MSK, 1)
 #define AD5940_AFECON_ADCEN_MSK		BIT(7)		/* ADC Power Enable. */
 #define AD5940_AFECON_ADCEN		FIELD_PREP(AD5940_AFECON_ADCEN_MSK, 1)
+#define AD5940_AFECON_ADCDIS		FIELD_PREP(AD5940_AFECON_ADCEN_MSK, 0)
+#define AD5940_AFECON_DACEN_MSK		BIT(6)		/* ADC Power Enable. */
+#define AD5940_AFECON_DACEN		FIELD_PREP(AD5940_AFECON_ADCEN_MSK, 1)
+#define AD5940_AFECON_DACDIS		FIELD_PREP(AD5940_AFECON_ADCEN_MSK, 0)
 
 #define AD5940_REG_ADCDAT		0x00002074	/* ADC Raw Result. */
 #define AD5940_REG_DFTREAL		0x00002078	/* DFT Result, Real Part. */
@@ -55,11 +51,13 @@ struct ad5940 {
 #define AD5940_AFECON_SWRSTCON		0x00000424            /*  AFECON Software Reset */
 #define AD5940_AFECON_TRIGSEQ		0x00000430            /*  AFECON Trigger Sequence */
 
+#define AD5940_INTERNAL_VREF		1820
+
 #define AD5940_CHIPID			0x5502
 
 #define AD5940_GPIO_PULLUP		0x00000001
 
-static int ad5940_set_addr(struct spi_device *spi, u16 addr)
+static inline int ad5940_set_addr(struct spi_device *spi, u16 addr)
 {
 	u8 tx_buf[3];
 
@@ -70,7 +68,7 @@ static int ad5940_set_addr(struct spi_device *spi, u16 addr)
 	return spi_write(spi, tx_buf, 3);
 }
 
-static int ad5940_read_reg(struct spi_device *spi, u16 addr, u32 *data)
+static inline int ad5940_read_reg(struct spi_device *spi, u16 addr, u32 *data)
 {
 	u8 tx_buf[2];
 	u8 rx_buf[4];
@@ -103,7 +101,7 @@ static int ad5940_read_reg(struct spi_device *spi, u16 addr, u32 *data)
 	return 0;
 }
 
-static int ad5940_write_reg(struct spi_device *spi, u16 addr, u32 data)
+static inline int ad5940_write_reg(struct spi_device *spi, u16 addr, u32 data)
 {
 	u8 tx_buf[5];
 	int tx_len;
@@ -130,18 +128,21 @@ static int ad5940_write_reg(struct spi_device *spi, u16 addr, u32 data)
 	return spi_write(spi, tx_buf, tx_len);
 }
 
-static int ad5940_write_reg_mask(struct spi_device *spi, u16 addr,
+static inline int ad5940_write_reg_mask(struct spi_device *spi, u16 addr,
 				 u32 mask, u32 data)
 {
-	u32 temp;
+	u32 temp, new_val;
 	int ret;
 
 	ret = ad5940_read_reg(spi, addr, &temp);
 	if (ret < 0)
 		return ret;
 
-	temp &= ~mask;
-	temp |= data;
+	new_val = temp & (~mask);
+	new_val |= data;
 
-	return ad5940_write_reg(spi, addr, temp);
+	if (new_val == temp)
+		return 0;
+	else
+		return ad5940_write_reg(spi, addr, new_val);
 }
